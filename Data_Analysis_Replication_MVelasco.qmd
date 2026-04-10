@@ -1,0 +1,1210 @@
+---
+title: "https://github.com/jmv3867/Data_Analysis_Replication_MVelasco.git"
+author: "Janny Mauricio Velasco Alban"
+format: html
+editor: visual
+---
+
+# University of Texas at Austin
+
+## ANT388C Applied Data Analysis
+
+![](images/homepage-parallax-background-image.avif)
+
+### Data Analysis Replication Assignment
+
+#### Janny Mauricio Velasco Alban
+
+### Introduction
+
+This assignment explores the application of R as a tool to reproduce the quantitative analysis of published research. In this case, I brought one of the most interesting proposals in Amazonian Soil Sciences. During centuries the Amazon was considered as a *"counterfeit paradise"*, a "*green hell"* or a *"natural wild and pristine forest.* Current research, especially Brazilian Archaeologists and Anthropologists have questioned those assumptions and have debated the apparent scarcity and environmental limitation of the Amazon through the Terra Preta de Indio or Amazonian Dark Earth. This concept explains the enrichment and fertility of soils in the Amazon basin, in places related with pre-Columbian settlements. The ADE has been an important topic to discuss sustainability and forest management in the Amazon. However, "Silva et. al. (2021) presents an statement about an alternative origin of these soils, arguing an apparent alluvial origin. His claim is supported by geochemical evidence from one location in Central Amazon, showing interesting datasets that explore: chemical composition, statistical projections, quantitative analysis and correlations. As an Anthropological Archaeologist involved in Amazonian Research, I read this article critically and found pertinent explore its data management and methodology to understand how current scholarship is constructing new arguments to foster or question interpretations.
+
+In that regard, this work looks to analyze and reproduce the plots and statistical analysis of Silva et. al. (2021) using R as the resource. This replication data analysis will be composed for chunks divided in sections and following a relation with the article and available data. Finally, I present a section of conclusions that summarize this exercise and show my own perspectives of applied data analysis in Archaeological research. I can conclude that R is a great tool for data analysis but it requires of sustained practice and review of packages and statistical analysis, the need to tidy our data, the necesity to understand our data and the use of plots and visual tools to fulfill that aim, and most important, the limitations that our knowledge and data have in the research practice.
+
+![](images/Nat-Comm.jpg)
+
+### Article:
+
+Silva, L.C.R., Corrêa, R.S., Wright, J.L. *et al.* A new hypothesis for the origin of Amazonian Dark Earths. *Nat Commun* **12**, 127 (2021). https://doi.org/10.1038/s41467-020-20184-2
+
+[https://doi.org/10.1038/s41467-020-20184-2](https://www.nature.com/articles/s41467-020-20184-2#citeas "https://doi.org/10.1038/s41467-020-20184-2")
+
+### Abstract
+
+Amazonian Dark Earths (ADEs) are unusually fertile soils characterised by elevated concentrations of microscopic charcoal particles, which confer their distinctive colouration. Frequent occurrences of pre-Columbian artefacts at ADE sites led to their ubiquitous classification as Anthrosols (soils of anthropic origin). However, it remains unclear how indigenous peoples created areas of high fertility in one of the most nutrient-impoverished environments on Earth. Here, we report new data from a well-studied ADE site in the Brazilian Amazon, which compel us to reconsider its anthropic origin. The amounts of phosphorus and calcium—two of the least abundant macronutrients in the region—are orders of magnitude higher in ADE profiles than in the surrounding soil. The elevated levels of phosphorus and calcium, which are often interpreted as evidence of human activity at other sites, correlate spatially with trace elements that indicate exogenous mineral sources rather than in situ deposition. Stable isotope ratios of neodymium, strontium, and radiocarbon activity of microcharcoal particles also indicate exogenous inputs from alluvial deposition of carbon and mineral elements to ADE profiles, beginning several thousands of years before the earliest evidence of soil management for plant cultivation in the region. Our data suggest that indigenous peoples harnessed natural processes of landscape formation, which led to the unique properties of ADEs, but were not responsible for their genesis. If corroborated elsewhere, this hypothesis would transform our understanding of human influence in Amazonia, opening new frontiers for the sustainable use of tropical landscapes going forward.
+
+### Let's go to the code...
+
+#### 01. First, let's import the necessary libraries
+
+```{r}
+
+#Libraries 
+
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(viridis)
+library(gstat)
+library(sp)
+library(sf)
+library(raster)
+library(scales)
+library(gridExtra)
+library(ggpubr)
+library(broom)
+library(emmeans)
+library(car)
+library(lme4)
+library(ggrepel)
+library(RColorBrewer)
+library(knitr)
+library(kableExtra)
+library(CORPlot)
+library(reshape2)
+library(dplyr)
+library(corrplot)
+
+
+
+```
+
+##### 
+
+#### 02. Data sources
+
+```{r}
+
+# First dataset "Extractable elements Reference Profiles"
+
+f1<- "https://raw.githubusercontent.com/jmv3867/Data_Analysis_Replication_MVelasco/refs/heads/main/Extractable_elements_reference_profiles.csv"
+
+d1<- read_csv(f1, col_names = TRUE)
+
+d1
+
+view(d1)
+```
+
+```{r}
+# Second dataset "Isotopes and P and Ca stocks"
+
+f2<- "https://raw.githubusercontent.com/jmv3867/Data_Analysis_Replication_MVelasco/refs/heads/main/Isotopes_and_P_and_Ca_stocks.csv"
+
+d2<- read_csv(f2, col_names = TRUE)
+
+d2
+
+view(d2)
+```
+
+```{r}
+# Third dataset "Total Elements Maximum Contrast Profiles"
+
+f3<- "https://raw.githubusercontent.com/jmv3867/Data_Analysis_Replication_MVelasco/refs/heads/main/Total_elements_maximum_contrast_profiles.csv"
+
+d3<- read_csv(f3, col_names = TRUE)
+
+d3
+
+view(d3)
+```
+
+The two datasets consist in four conceptual tables divided in:
+
+1.  14C radiocarbon dates
+2.  Carbon isotopes /Soil Organic Carbon (SOC) / PyC
+3.  Sr / Nd isotopes
+4.  Total P and Ca stocks with bulk density
+
+#### 03. Aesthetic shared for all analysis
+
+```{r}
+
+pal<- c("ADE" = "#2166ac", "Ultisol" = "#d6604d")
+
+theme_ade <- theme_bw(base_size = 11)+
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "grey90"), 
+    legend.position = "bottom"
+  )
+
+depth_labels <- c("0-10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", "90-100")
+
+depth_to_mid <- function(x){
+  case_when(
+    x == "0-10" ~ 5,
+    x == "10-20" ~ 15,
+    x == "20-30" ~ 25,
+    x == "30-40" ~ 35,
+    x == "40-50" ~ 45,
+    x == "50-60" ~ 55,
+    x == "60-70" ~ 65,
+    x == "70-80" ~ 75,
+    x == "80-90" ~ 85,
+    x == "90-100" ~ 95,
+    TRUE ~ NA_real_
+  )
+}
+
+#Horizontal depth profile plot with 2SE errror bars
+
+make_depth_profile <- function(data, y_var, se_var, xlab, title, pal_override = pal) {
+  ggplot(data, aes(x = .data[[y_var]], y = depth_mid, color = soil_type, shape = soil_type))+
+    geom_point(size = 3)+
+    geom_path(linewidth = 0.7)+
+    geom_errorbarh(aes(xmin = .data[[y_var]] - 2 * .data[[se_var]], 
+                       xmax= .data[[y_var]] + 2 * .data[[se_var]]), height = 2)+
+    scale_y_reverse(breaks = seq(5, 95, 10), labels = depth_labels)+
+    scale_color_manual(values = pal_override, name = "Soil type")+
+    scale_shape_manual(values = c("ADE" = 18, "Ultisol" = 17), 
+                       name = "Soil type")+
+    labs(x=xlab, y="Depth (cm)", title = title)+
+    theme_ade
+}
+```
+
+#### 04. Reference profiles
+
+##### Figure 2: Spatial Kriking Maps
+
+```{r}
+
+krig_map <- function(df_depth, element_col, depth_val, title_str) {
+  df_sub <- df_depth %>%
+    filter(`Depth (cm)` == depth_val) %>%
+    transmute(x = `Coordinate X`, y = `Coordinate Y`,
+              z = as.numeric(.data[[element_col]])) %>%
+    filter(!is.na(z))
+ 
+  sp_df <- df_sub
+  coordinates(sp_df) <- ~x + y
+ 
+  v <- variogram(z ~ 1, sp_df)
+  v_fit <- tryCatch(fit.variogram(v, model = vgm(var(df_sub$z),"Sph", max(v$dist)/2,nugget = var(df_sub$z)*0.1), fit.method = 6),
+                    error = function(e) fit.variogram(v, model = vgm(var(df_sub$z), "Exp", max(v$dist)/2, nugget = var(df_sub$z)*0.1), fit.method = 6))
+  
+  v_fit$range[v_fit$range<0] <- max(v$dist)/2
+  v_fit$psill[v_fit$psill<0] <- var(df_sub$z)
+ 
+  x_r <- range(df_sub$x); y_r <- range(df_sub$y)
+  grd <- expand.grid(x = seq(x_r[1], x_r[2], length.out = 60),
+                     y = seq(y_r[1], y_r[2], length.out = 60))
+  coordinates(grd) <- ~x + y; gridded(grd) <- TRUE
+ 
+  k <- krige(z ~ 1, sp_df, grd, model = v_fit, debug.level = 0)
+  k_df <- as.data.frame(k)
+ 
+  ggplot(k_df, aes(x = x, y = y, fill = var1.pred)) +
+    geom_raster(interpolate = TRUE) +
+    geom_point(data = df_sub, aes(x = x, y = y), inherit.aes = FALSE,
+               colour = "white", size = 1, alpha = 0.7) +
+    scale_fill_gradientn(
+      colours = c("#2166ac","#74add1","#ffffbf","#f46d43","#a50026"),
+      name    = element_col
+    ) +
+    labs(title = paste0(depth_val, " cm"), x = NULL, y = NULL) +
+    coord_fixed() +
+    theme_bw(base_size = 8) +
+    theme(plot.title = element_text(size = 8, hjust = 0.5),
+          legend.key.height = unit(0.3, "cm"),
+          axis.text = element_text(size = 6))
+}
+ 
+depths <- c(20, 40, 60, 80, 100)
+ 
+krig_P <- lapply(depths, krig_map, df_depth = d1,
+                  element_col = "P (mg/dm3)",     title_str = "P")
+krig_Ca <- lapply(depths, krig_map, df_depth = d1,
+                  element_col = "Ca (cmolc/dm3)", title_str = "Ca")
+ 
+# ex_ratio and krig_Cap
+
+ext_ratio <- d1%>%
+  mutate(CaP_ratio = `Ca (cmolc/dm3)` * 100) # unit normalization
+krig_CaP <- lapply(depths, krig_map, df_depth = ext_ratio, element_col = "CaP_ratio", title_str = "Ca/P")
+
+
+krig_P
+krig_Ca
+ext_ratio
+krig_CaP
+
+
+```
+
+##### Ca/P ratio per profile and depth
+
+```{r}
+#Figure 2 Ca/P ratio per profile and depth
+
+
+fig2 <- (wrap_plots(krig_P, ncol = 1) |
+           wrap_plots(krig_Ca, ncol = 1) |
+           wrap_plots(krig_CaP, ncol = 1))+
+  plot_annotation(
+    title = "Figure 2 ~ Extractable P, Ca, and Ca/P ratio (kriging interpolation)", 
+    subtitle = "Each row = one depth increment (20, 40, 60, 80, 100 cm); columns: P | Ca | Ca/P", 
+    theme = theme(plot.title = element_text(face = "bold", size = 12), plot.subtitle = element_text(size = 9))
+  )
+
+
+fig2
+
+```
+
+#### 05. Isotopes and stocks (multi-section csv)
+
+##### Radio-carbon age depth data
+
+```{r}
+
+#Radio carbon dates and depth in taken samples
+
+radio_raw<- d2[, 1:5]
+colnames(radio_raw) <- c("depth_cm", "soil_type", "c14_cal_ybp", "ybp_se", "c_pool")
+radiocarbon <- radio_raw %>%
+  filter(!is.na(depth_cm), !is.na(c_pool)) %>%
+  mutate(
+    depth_mid = depth_to_mid(depth_cm),
+         c14_cal_ybp = case_when(c14_cal_ybp == "modern" ~ 0, c14_cal_ybp == "nd" ~ NA_real_, TRUE ~ as.numeric(c14_cal_ybp)),
+         ybp_se = as.numeric(ybp_se)
+         )%>%
+  filter(!is.na(depth_mid))
+
+radio_raw
+
+
+```
+
+##### Carbon isotopes / SOC / PyC 
+
+```{r}
+
+# Carbon isotopes / Soil Organic Carbon / PyC
+
+carbon_raw <- d2[, 7:14]
+colnames(carbon_raw) <- c("soil_type", "depth_cm", "avg_d13C", "d13C_se", "avg_SOC_g_kg", "SOC_se", "C4_pct", "PyC_g_kg")
+carbon <- carbon_raw %>%
+  filter(!is.na(soil_type)) %>%
+  mutate(depth_mid = depth_to_mid(depth_cm), 
+         soil_type = trimws(soil_type))%>%
+  filter(!is.na(depth_mid))
+
+carbon
+```
+
+##### Sr / Nd isotopes 
+
+```{r}
+
+# Sr / Nd isotopes relationship
+
+iso_cols <- d2[, 16:24]
+colnames(iso_cols) <- c("soil_type", "depth_cm", "Sm_ppm", "Nd_ppm", "Sm147_Nd144", "eNd0", "TDM-Ga", "Sr87_86", "Nd143_144")
+
+isotopes<- iso_cols %>%
+  filter(!is.na(soil_type)) %>%
+  mutate(soil_type = trimws(soil_type),
+         depth_cm = trimws(depth_cm))
+
+isotopes
+```
+
+##### Total P & Ca stocks with bulk density
+
+```{r}
+
+# Total P and Ca according to bulk density
+
+stocks_raw <- d2[, 26:32]
+colnames(stocks_raw) <- c("soil_type", "depth_cm", "avg_Ca_mg_kg", "Ca_se", "avg_P_mg_kg", "P_se", "bulk_density")
+
+stocks <- stocks_raw %>%
+  filter(!is.na(soil_type))%>%
+  mutate(soil_type = trimws(soil_type),
+         depth_mid = depth_to_mid(depth_cm)) %>%
+  filter(!is.na(depth_mid)) %>%
+  mutate(
+    Ca_stock_Mg_ha = avg_Ca_mg_kg * bulk_density * 0.1 / 100, 
+    P_stock_Mg_ha = avg_P_mg_kg * bulk_density * 0.1 / 100,
+    Ca_se_Mg_ha = Ca_se * bulk_density * 0.1 / 100,
+    P_se_Mg_ha = P_se * bulk_density * 0.1 / 100
+  )
+
+stocks
+```
+
+#### 06. Nutrient Stock Budgets
+
+```{r}
+
+#Nutrient stocks
+
+total_stocks <- stocks %>%
+  group_by(soil_type)%>%
+  summarise(Total_Ca_Mg_ha = sum(Ca_stock_Mg_ha, na.rm = TRUE),
+            Total_P_Mg_ha = sum(P_stock_Mg_ha, na.rm = TRUE),
+            .groups = "drop"
+            )
+
+excess <- total_stocks%>%
+  pivot_wider(names_from = soil_type,
+              values_from = c(Total_Ca_Mg_ha, Total_P_Mg_ha)) %>%
+  mutate(P_excess_Mg_ha = Total_P_Mg_ha_ADE - Total_P_Mg_ha_Ultisol, 
+         Ca_excess_Mg_ha = Total_Ca_Mg_ha_ADE - Total_Ca_Mg_ha_Ultisol,
+         Total_excess = P_excess_Mg_ha + Ca_excess_Mg_ha
+         )
+
+cat("\n=== Total Nutrient Stocks 0-100 cm (Mg/ha) ===\n")
+print(total_stocks)
+cat("\n=== Nutrient Excess ADE vs Ultisol ===\n")
+print(excess)
+
+
+```
+
+#### 07. Figure 3: Total P and Ca depth profiles + stock charts
+
+##### P and Ca profiles
+
+```{r}
+
+# P profile
+
+p_profile <- make_depth_profile(stocks, "avg_P_mg_kg", "P_se",
+                                "Total P (mg/kg)", "Total Phosphorus")
+
+# Ca profile
+
+ca_profile <- make_depth_profile(stocks, "avg_Ca_mg_kg", "Ca_se",
+                                "Total Ca (mg/kg)", "Total Calcium")
+
+
+##bar data for graphs
+bar_data <- total_stocks%>%
+  pivot_longer(-soil_type, names_to = "element", values_to = "stock") %>%
+  mutate(element = ifelse(grepl("Ca", element), "Ca (Mg/ha)", "P (Mg/ha)"))
+
+p_profile
+ca_profile
+bar_data
+
+```
+
+##### Barplot
+
+```{r}
+
+#Let's go to the barplot
+
+bar_plot<- ggplot(bar_data, aes(x = soil_type, y = stock, fill = soil_type))+
+  geom_col(width = 0.6, color = "black", linewidth = 0.3)+
+  geom_text(aes(label = round(stock, 1)), vjust = -0.4, size = 3.5)+
+  facet_wrap(~element, scales = "free_y")+
+  scale_fill_manual(values = pal)+
+  labs(x = NULL, y = "Stock (Mg/ha)", title = "Total stocks (0-100 cm)")+
+  theme_ade + theme(legend.position = "none")
+
+bar_plot # In this case the barplot presents a wider view and detail, this chart will be included in Figure 3 as part of the analysis of Total P and Ca in ADE and Ultisols. 
+
+```
+
+##### Figure 3 
+
+```{r}
+
+#Figure 3 
+
+fig3 <- (p_profile | ca_profile | bar_plot)+
+  plot_layout(guides = "collect")+
+  plot_annotation(
+    title = "Figure 3 - Total P and Ca in ADE and Ultisol profiles",
+    theme = theme(plot.title = element_text(face = "bold", size = 13))
+  )& 
+  theme(legend.position = "bottom")
+
+fig3
+```
+
+#### 08. Figure 4: SOC, 13C, PyC, C4 depth profiles
+
+##### Soil Organic Carbon plot
+
+```{r}
+
+#SOC Plot
+
+soc_plot <- make_depth_profile(carbon, "avg_SOC_g_kg", "SOC_se", "Total Organic C (g/kg)", "SOC")
+
+```
+
+##### d13C plot
+
+```{r}
+
+#d13C
+
+d13C_plot <- ggplot(carbon, aes(x = avg_d13C, y = depth_mid, color = soil_type, shape = soil_type))+
+  geom_point(size = 3)+
+  geom_path(linewidth = 0.7)+
+  geom_errorbarh(aes(xmin = avg_d13C - 2*d13C_se, 
+                     xmax = avg_d13C + 2*d13C_se), height =2)+
+  scale_y_reverse(breaks = seq(5,95,10), labels = depth_labels)+
+  scale_color_manual(values = pal, name = "Soil type")+
+  scale_shape_manual(values = c("ADE"=18, "Ultisol" = 17), name = "Soil type")+
+  labs(x = "δ¹³C (‰)", y = "Depth (cm)", title = "δ¹³C Bulk Organic Matter")+
+  theme_ade
+
+d13C_plot
+```
+
+##### PyC plot
+
+```{r}
+
+#PyC plot
+
+pyc_plot <- ggplot(carbon %>%
+                     filter(!is.na(PyC_g_kg)), aes(x = PyC_g_kg, y = depth_mid, color = soil_type, shape = soil_type))+
+  geom_point(size = 3)+
+  geom_path(linewidth = 0.7)+
+  scale_y_reverse(breaks = seq(5,95,10), labels = depth_labels)+
+  scale_color_manual(values = pal, name = "Soil type")+
+  scale_shape_manual(values = c("ADE"=18, "Ultisol"=17), name = "Soil type")+
+  labs(x = "Pyrogenic C (g/kg)", y = "Depth (cm)", title = "Pyrogenic Carbon")+
+  theme_ade
+
+pyc_plot
+```
+
+##### C4 plot
+
+```{r}
+
+#C4 plot
+
+c4_plot <- ggplot(carbon, aes(x = C4_pct, y = depth_mid, color = soil_type, shape = soil_type))+
+  geom_point(size = 3)+
+  geom_path(linewidth = 0.7)+
+  scale_y_reverse(breaks = seq(5,95,10), labels = depth_labels)+
+  scale_color_manual(values = pal, name = "Soil type")+
+  scale_shape_manual(values = c("ADE"=18, "Ultisol"=17), name = "Soil type")+
+  labs(x = "C4-derived OC (%)", y = "Depth (cm)", title = "C4 Grass Contribution")+
+  theme_ade
+
+c4_plot
+
+```
+
+##### Figure 4
+
+```{r}
+
+#Figure 4 (it was time!)
+
+fig4 <- (soc_plot | d13C_plot | pyc_plot | c4_plot)+
+  plot_layout(guides = "collect")+
+  plot_annotation(
+    title = "Figure 4 - Carbon pools and stable isotope ratios",
+    theme = theme(plot.title = element_text(face = "bold", size = 13))
+  )&
+  theme(legend.position = "bottom")
+
+fig4
+```
+
+#### 09. Figure 5: Radiocarbon age-depth model
+
+##### Data upload for radio carbon and soil organic carbon and Phosphorus and Carbon
+
+```{r}
+
+#radio_soc and radio_pyc
+
+radio_soc <- radiocarbon %>%
+  filter(c_pool == "SOC")%>%
+  arrange(depth_mid)
+
+radio_pyc <- radiocarbon %>%
+  filter(c_pool == "PyC") %>%
+  arrange(depth_mid)
+
+```
+
+##### Figure 5
+
+```{r}
+
+# Figure 5
+
+fig5<- ggplot()+
+  geom_line(data = radio_soc, aes(x = c14_cal_ybp, y = depth_mid),
+            linetype = "solid", color = "black", linewidth = 0.8)+
+  geom_line(data = radio_pyc, aes(x = c14_cal_ybp, y = depth_mid), linetype = "dashed", color = "black", linewidth = 0.8)+
+  geom_point(data = radio_soc, aes(x = c14_cal_ybp, y = depth_mid, color= soil_type, shape = "Bulk SOC"), size = 4)+
+  geom_point(data = radio_pyc, aes(x = c14_cal_ybp, y = depth_mid, color= soil_type, shape = "Pyrogenic C"), size = 4)+
+  geom_errorbarh(data = radiocarbon %>% filter(!is.na(ybp_se)), aes(y = depth_mid, xmin = c14_cal_ybp - ybp_se, xmax = c14_cal_ybp + ybp_se), height = 2, color="grey50")+
+  annotate("text", x=7900, y = 91,
+           label = "~7630 +- 80 ybp\n(earliest PyC input)",
+           size = 3.2, hjust = 1, color = "#2166ac")+
+  scale_y_reverse(limits = c(100, 0), breaks = seq(0,100,10))+
+  scale_color_manual(values = pal, name = "Soil type")+
+  scale_shape_manual(values = c("Bulk SOC"=16, "Pyrogenic C"=17), name="Carbon pool")+
+  labs(x = "Calibrated 14C age (years before present)", y = "Soil depth (cm)", title = "Figure 5 ~ Age-depth model for bulk SOC and pyrogenic carbon")+
+  theme_ade + theme(plot.title = element_text(face = "bold"))
+
+fig5
+```
+
+#### 10. Figure 6: Isotope box plots
+
+##### Isotopes data
+
+```{r}
+
+
+iso_long<- isotopes %>%
+  dplyr::select(soil_type, Sr87_86, Nd143_144)%>%
+  dplyr::filter(!is.na(soil_type))%>%
+  pivot_longer(cols = c(Sr87_86, Nd143_144), names_to = "isotope", values_to = "value")%>%
+  dplyr::filter(!is.na(value)) %>%
+  dplyr::mutate(isotope = dplyr::recode(isotope, Sr87_86 = "87Sr/86Sr", Nd143_144 = "143Nd/144Nd"), soil_type = factor(soil_type, levels = c("ADE", "Ultisol"))) # In these lines I used dplyr as a way to solve conflicts for making methods due to the diversity and quantity of installed packages. 
+
+
+```
+
+##### Figure 6
+
+```{r}
+
+fig6 <- ggplot(iso_long, aes(x = soil_type, y = value, fill = soil_type, color = soil_type))+
+  geom_boxplot(alpha = 0.4, outlier.shape = NA, linewidth = 0.8)+
+  geom_jitter(width = 0.12, size = 2.5, alpha = 0.8)+
+  facet_wrap(~isotope, scales = "free_y")+
+  scale_fill_manual(values = pal)+
+  scale_color_manual(values = pal)+
+  labs(x = NULL, y = "Isotope ratios of Sr, Nd, and eNd(0)")+
+  theme_ade + theme(legend.position = "none", plot.title = element_text(face = "bold"))
+
+fig6
+  
+```
+
+#### 11. Equations from Methods
+
+##### Two-end-member C4/C3 mixing model
+
+```{r}
+
+# Equation 2: Two-end-member C4/C3 mixing model 
+
+## C4 = Ct * (deltat - delta3) / (delta 4 - delta3)
+
+delta3 <- -25.9 # C3 trees 
+delta4 <- -11.2 # C4 grasses
+carbon <- carbon %>%
+  mutate(C4_fraction_eq2 = pmax(0, pmin(100, (avg_d13C - delta3) / (delta4 - delta3) * 100)))
+
+cat("\n=== Equation 2: C4 mixing model vs. reported values ===\n")
+carbon %>%
+  dplyr::select(soil_type, depth_cm, avg_d13C, C4_pct, C4_fraction_eq2) %>% print(n=20)
+```
+
+##### Sr isotope mixing - river sediment contribution to ADE
+
+```{r}
+
+#Equation 3 Sr isotope mixing - river sediment contribution to ADE
+
+sr_ADE <- mean(isotopes$Sr87_86[isotopes$soil_type == "ADE"], na.rm = TRUE)
+Sr_Ultisol <- mean(isotopes$Sr87_86[isotopes$soil_type == "Ultisol"], na.rm = TRUE)
+
+Sr_river <- 0.709 #Solimoes River
+f_river <- (sr_ADE - Sr_Ultisol) / (Sr_river - Sr_Ultisol)
+
+cat(sprintf("\n=== Equation 3 Sr Mixing Model ===\n Sr ADE: %.6f | Sr Ultisol: %.6f | Sr River: %.3f\n River contribution to ADE: %.1f%%\n", sr_ADE, Sr_Ultisol, Sr_river, f_river * 100))
+
+
+```
+
+##### Fish protein / population density model
+
+```{r}
+
+#Equation 4: fish protein / population density model
+
+excess_PlusCa <- as.numeric(excess["Total_excess"]) # Mg/ha
+
+fish_PCa_fraction <- 0.06 # P+Ca = 6% of dry fish mass
+
+water_fraction <- 0.80 # fresh fish ~80% water
+
+util_fraction <- 0.50 # assuming that 50% of edible portion was added to the soil
+
+fish_PCa_per_kg_fresh <- (1 - water_fraction) * fish_PCa_fraction * util_fraction
+
+density_range <- c(20, 60) # people per ha
+
+fish_g_per_day_range <- c(90, 219) # g fresh fish per person per day
+
+occ_years <- outer(density_range, fish_g_per_day_range, function(d, f) {
+  annual_input_Mg_ha <- d*f*365 / 1e9 * fish_PCa_per_kg_fresh * 1e6
+  excess_PlusCa / annual_input_Mg_ha
+})
+
+dimnames(occ_years) <- list(
+  paste0(density_range, " people/ha"), 
+  paste0(fish_g_per_day_range, " g fish/day")
+)
+
+cat("\n === Equation 4: Estimated occupation time (years) to form ADE from fish waste ===\n")
+
+print(round(occ_years, 0))
+```
+
+#### 12. ICP-MS total elements profiles
+
+##### Column names
+
+```{r}
+
+#Colnames
+
+colnames(d3)[1:3] <- c("sample_code", "depth_cm", "soil_type")
+colnames(d3) <- trimws(colnames(d3))
+
+#Total elements and maximum contrast profiles
+
+d3 <- d3 %>%
+  mutate(
+    soil_type = case_when(soil_type == "Ulti" ~ "Ultisol", TRUE ~ soil_type), 
+    soil_type = factor(soil_type, levels = c("ADE", "Ultisol"))
+  )
+```
+
+##### Elements by columns to numeric
+
+```{r}
+elem_cols <- colnames(d3)[4:ncol(d3)] # 28 element columns
+
+tot <- d3 %>%
+  dplyr::mutate(across(all_of(elem_cols), as.numeric)) %>%
+  dplyr::filter(!is.na(sample_code))
+
+cat(sprintf("\nDataset 3: %d rows x %d cols | Soil types: %s | Depths: %s\n", 
+            nrow(tot), ncol(tot), 
+            paste(levels(tot$soil_type), collapse=", "), paste(sort(unique(tot$depth_cm)), collapse = ", ")))
+```
+
+#### 13. Supplementary table 1: Paired t-tests
+
+```{r}
+
+#Supplementary Table 1: Concentrations significantly greater in ADE
+
+ttest_results <- map_dfr(elem_cols, function(el)
+  {
+  ade<- tot %>%
+    filter(soil_type == "ADE")%>%
+    pull(el)
+  ult <- tot%>%
+    filter(soil_type == "Ultisol") %>% pull(el)
+  tt <- t.test(ade, ult, var.equal = FALSE)
+  tibble(
+    Element = el, 
+    ADE_mean = mean(ade, na.rm = TRUE),
+    Ultisol_mean = mean(ult, na.rm = TRUE),
+    Ratio_ADE_Ult = mean(ade, na.rm = TRUE) / mean(ult, na.rm = TRUE),
+    t_stat = tt$statistic, 
+    df = tt$parameter, 
+    p_value = tt$p.value, 
+    sig = case_when(tt$p.value<0.001~"***", tt$p.value<0.01~"**", tt$p.value<0.05~"*", TRUE~"ns"), 
+    ADE_higher = mean(ade, na.rm=TRUE) > mean(ult, na.rm=TRUE)
+  )
+}) %>% arrange(p_value)
+
+cat("\n=== Supplementary Table 1 ~ t-tests: ADE vs Ultisol ===\n")
+print(ttest_results, n=28)
+
+```
+
+#### 14. Figure Ratio bar chart ADE:Ultisol mean
+
+##### Ratio plot data
+
+```{r}
+
+# Elements enriched / depleted in ADE relative to Ultisol
+
+ratio_plot_data <- ttest_results %>%
+  mutate(log2_ratio = log2(Ratio_ADE_Ult),
+         fill_col = case_when(
+           sig == "ns"             ~ "Not significant",
+           ADE_higher & sig != "ns" ~ "ADE > Ultisol (p<0.05)",
+           !ADE_higher& sig != "ns" ~ "Ultisol > ADE (p<0.05)"
+         ),
+         Element = factor(Element, levels = Element[order(log2_ratio)]))
+
+ratio_plot_data
+```
+
+##### Figure Element ratios
+
+```{r}
+
+#Lets plot the ratios
+
+fig_ratio <- ggplot(ratio_plot_data,
+                    aes(x = Element, y = log2_ratio, fill = fill_col)) +
+  geom_col(colour = "black", linewidth = 0.3) +
+  geom_hline(yintercept = 0, linewidth = 0.8) +
+  scale_fill_manual(values = c(
+    "ADE > Ultisol (p<0.05)"= "#2166ac",
+    "Ultisol > ADE (p<0.05)" = "#d6604d",
+    "Not significant" = "grey70"
+  ), name = NULL) +
+  labs(x = "Element", y = "log₂(ADE mean / Ultisol mean)",
+       title = "Elemental enrichment/depletion in ADE relative to Ultisol",
+       subtitle = "Replicates Supp. Table 1 – elements significantly enriched in ADE highlighted in blue") +
+  theme_ade + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+                    plot.title   = element_text(face = "bold"))
+
+fig_ratio
+```
+
+#### 15. Supplementary figure 1: PCA of all 28 elements using the ICP-MS dataset
+
+##### PCA data
+
+```{r}
+
+pca_input <- tot %>%
+  dplyr::select(soil_type, depth_cm, all_of(elem_cols)) %>%
+  filter(complete.cases(.))
+ 
+pca_mat <- pca_input %>% 
+  dplyr::select(all_of(elem_cols)) %>% as.matrix()
+pca_res <- prcomp(pca_mat, scale. = TRUE)
+pca_df <- as.data.frame(pca_res$x) %>%
+  bind_cols(pca_input %>% 
+              dplyr::select(soil_type, depth_cm)) %>%
+  dplyr::mutate(depth_fac = factor(depth_cm, levels = sort(unique(depth_cm))))
+ 
+var_exp <- summary(pca_res)$importance[2,] * 100
+cat(sprintf("\n=== PCA: PC1=%.1f%%, PC2=%.1f%%, PC3=%.1f%% ===\n",
+            var_exp[1], var_exp[2], var_exp[3]))
+
+
+```
+
+##### Panel A: ordination colored by depth \~ soil type
+
+```{r}
+
+figS1a <- ggplot(pca_df, aes(x = PC1, y = PC2,
+                              colour = depth_fac, shape = soil_type)) +
+  geom_point(size = 2.5, alpha = 0.75) +
+  scale_colour_viridis_d(name = "Depth (cm)", option = "plasma",
+                          direction = -1) +
+  scale_shape_manual(values = c("ADE"=16,"Ultisol"=17), name = "Soil type") +
+  labs(x = sprintf("PC1 (%.1f%%)", var_exp[1]),
+       y = sprintf("PC2 (%.1f%%)", var_exp[2]),
+       title = "A – PCA ordination (soil type × depth)") +
+  theme_ade
+
+figS1a
+```
+
+##### Circle Biplot
+
+```{r}
+
+loadings_df <- as.data.frame(pca_res$rotation[, 1:2]) %>%
+  rownames_to_column("element") %>%
+  rename(PC1 = PC1, PC2 = PC2) %>%
+  mutate(PC1_sc = PC1 * 8, PC2_sc = PC2 * 8)   # scale to ordination space
+ 
+figS1b <- ggplot(loadings_df, aes(x = PC1_sc, y = PC2_sc)) +
+  # unit circle
+  annotate("path",
+           x = cos(seq(0, 2*pi, length.out = 200)) * 8,
+           y = sin(seq(0, 2*pi, length.out = 200)) * 8,
+           colour = "grey80", linewidth = 0.5) +
+  geom_segment(aes(x = 0, y = 0, xend = PC1_sc, yend = PC2_sc),
+               arrow = arrow(length = unit(0.18, "cm")),
+               colour = "#333333", linewidth = 0.5) +
+  geom_text_repel(aes(label = element), size = 3, colour = "#333333",
+                  max.overlaps = 20) +
+  labs(x = sprintf("PC1 (%.1f%%)", var_exp[1]),
+       y = sprintf("PC2 (%.1f%%)", var_exp[2]),
+       title = "B – Element loadings") +
+  coord_fixed() +
+  theme_ade
+
+figS1b
+```
+
+#### 16. Supplementary Figure 1B: Partial distributions bar chart
+
+```{r}
+
+# Supplementary Figure 18 
+
+contrib_df <- as.data.frame(pca_res$rotation[, 1:3]^2) %>%
+  rownames_to_column("element") %>%
+  rename(PC1=PC1, PC2=PC2, PC3=PC3) %>%
+  pivot_longer(-element, names_to="PC", values_to="contribution") %>%
+  mutate(contribution = contribution * 100,
+         element = factor(element, levels = elem_cols))
+
+contrib_df
+ 
+
+
+```
+
+##### Figure S1c: C – Contribution of elements to top 3 PCs
+
+```{r}
+
+#Figure S1c
+
+figS1c <- ggplot(contrib_df, aes(x = element, y = contribution, fill = PC)) +
+  geom_col(position = "dodge", colour = "black", linewidth = 0.2) +
+  scale_fill_manual(values = c("PC1"="#d6604d","PC2"="#4dac26","PC3"="#2166ac")) +
+  labs(x = "Element", y = "Partial contribution (%)",
+       title = "C – Contribution of elements to top 3 PCs") +
+  theme_ade +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+figS1c
+```
+
+##### Supplementary Figure 1: PCA of total elemental concentrations (28 elements
+
+```{r}
+
+figS1 <- (figS1a | figS1b) / figS1c +
+  plot_annotation(
+    title = "Supplementary Figure 1 – PCA of total elemental concentrations (28 elements)",
+    subtitle = sprintf("PC1 = %.1f%%, PC2 = %.1f%%, PC3 = %.1f%%",
+                       var_exp[1], var_exp[2], var_exp[3]),
+    theme = theme(plot.title    = element_text(face = "bold", size = 12),
+                     plot.subtitle = element_text(size = 9))
+  )
+
+figS1
+```
+
+#### 17. Depth profiles for all 28 elements
+
+##### Element Summary by ICP-MS
+
+```{r}
+
+#Elements by ICP_MS
+
+elem_summary <- tot %>%
+  group_by(soil_type, depth_cm) %>%
+  summarise(across(all_of(elem_cols),
+                   list(mean = ~mean(.x, na.rm=TRUE),
+                        sem  = ~sd(.x, na.rm=TRUE)/sqrt(sum(!is.na(.x))))),
+            .groups = "drop") %>%
+  mutate(depth_mid = as.numeric(depth_cm) - 5) 
+
+elem_summary
+```
+
+##### Grid of 28 depth profiles
+
+```{r}
+
+#Plot for profiles
+
+profile_plots <- map(elem_cols, function(el) {
+  mean_col <- paste0(el, "_mean")
+  sem_col <- paste0(el, "_sem")
+  sig_flag <- ttest_results$sig[ttest_results$Element == el]
+  ade_hi <- ttest_results$ADE_higher[ttest_results$Element == el]
+ 
+  col_ade <- if (!is.na(sig_flag) && sig_flag != "ns" && ade_hi) "#2166ac" else
+             if (!is.na(sig_flag) && sig_flag != "ns" && !ade_hi) "#d6604d" else "grey50"
+ 
+  ggplot(elem_summary, aes(x = .data[[mean_col]], y = depth_mid,
+                            colour = soil_type, shape = soil_type)) +
+    geom_point(size = 1.8) + geom_path(linewidth = 0.5) +
+    geom_errorbarh(aes(xmin = .data[[mean_col]] - 2*.data[[sem_col]],
+                       xmax = .data[[mean_col]] + 2*.data[[sem_col]]),
+                   height = 1.5) +
+    scale_y_reverse(breaks = seq(5,95,20)) +
+    scale_colour_manual(values = pal) +
+    scale_shape_manual(values = c("ADE"=18,"Ultisol"=17)) +
+    labs(x = "mg kg⁻¹", y = NULL,
+         title = paste0(el, if (!is.na(sig_flag)) paste0(" (", sig_flag, ")") else "")) +
+    theme_bw(base_size = 8) +
+    theme(legend.position = "none",
+          plot.title      = element_text(size = 8, face = "bold",
+                                         colour = col_ade),
+          axis.text       = element_text(size = 6),
+          panel.grid.minor = element_blank())
+})
+
+fig_all_profiles <- wrap_plots(profile_plots, ncol = 7) +
+  plot_annotation(
+    title    = "Depth profiles of all 28 elements (mean ± 2SE, n=15 per soil type per depth)",
+    subtitle = "Blue title = ADE significantly higher; red = Ultisol higher; *** p<0.001, ** p<0.01, * p<0.05",
+    theme    = theme(plot.title    = element_text(face = "bold", size = 11),
+                     plot.subtitle = element_text(size = 8))
+  )
+
+fig_all_profiles
+```
+
+#### 18. Supplementary Table 1: Correlation Heatmap
+
+```{r}
+
+#Correlation in Supplementary Table 1
+
+elem_mat <- tot %>%
+  dplyr::select(all_of(elem_cols)) %>%
+  as.matrix()
+
+cor_mat <- cor(elem_mat, use = "pairwise.complete.obs")
+
+#The visualization of cor_mat is too extensive, the visualization of this component was a real challenge. 
+
+#I tried to use the corrplot method, but the lack of tidy in the data was not easier to cross variables and make them visually efficient. 
+
+
+```
+
+##### 
+
+#### 19. Key alluvial - Indicator scatterplots
+
+##### Alluvial pairs
+
+```{r}
+
+alluvial_pairs <- list(
+  list(x="P",  y="Sr", lab_x="Total P (mg kg⁻¹)",  lab_y="Total Sr (mg kg⁻¹)"),
+  list(x="Ca", y="Sr", lab_x="Total Ca (mg kg⁻¹)", lab_y="Total Sr (mg kg⁻¹)"),
+  list(x="P",  y="Ni", lab_x="Total P (mg kg⁻¹)",  lab_y="Total Ni (mg kg⁻¹)"),
+  list(x="P",  y="Rb", lab_x="Total P (mg kg⁻¹)",  lab_y="Total Rb (mg kg⁻¹)"),
+  list(x="P",  y="Zn", lab_x="Total P (mg kg⁻¹)",  lab_y="Total Zn (mg kg⁻¹)"),
+  list(x="Ti", y="P",  lab_x="Total Ti (mg kg⁻¹)", lab_y="Total P (mg kg⁻¹)")
+)
+```
+
+##### Scatter plots
+
+```{r}
+
+scatter_plots <- map(alluvial_pairs, function(pair) {
+  r_all <- cor(tot[[pair$x]], tot[[pair$y]], use="complete.obs")
+  r_ade <- cor(tot[[pair$x]][tot$soil_type=="ADE"],
+               tot[[pair$y]][tot$soil_type=="ADE"], use="complete.obs")
+  r_ult <- cor(tot[[pair$x]][tot$soil_type=="Ultisol"],
+               tot[[pair$y]][tot$soil_type=="Ultisol"], use="complete.obs")
+ 
+  ggplot(tot, aes(x=.data[[pair$x]], y=.data[[pair$y]],
+                  colour=soil_type, shape=soil_type)) +
+    geom_point(size=2, alpha=0.6) +
+    geom_smooth(method="lm", se=FALSE, linewidth=0.8) +
+    scale_colour_manual(values=pal, name="Soil type") +
+    scale_shape_manual(values=c("ADE"=16,"Ultisol"=17), name="Soil type") +
+    annotate("text", x=-Inf, y=Inf,
+             label=sprintf("r(all)=%.2f\nr(ADE)=%.2f\nr(Ult)=%.2f",
+                           r_all, r_ade, r_ult),
+             hjust=-0.1, vjust=1.2, size=2.8, colour="black") +
+    labs(x=pair$lab_x, y=pair$lab_y) +
+    theme_ade + theme(legend.position="none")
+})
+
+scatter_plots
+```
+
+##### Figure of Alluvial depositation
+
+```{r}
+
+fig_alluvial <- wrap_plots(scatter_plots, ncol=3, guides="collect") +
+  plot_annotation(
+    title    = "Alluvial indicator elements – P/Ca enrichment vs. exogenous trace elements",
+    subtitle = "Paper: 'Ni, Rb, Ti, Zn at same depths as enriched P and Ca match alluvial deposition'",
+    theme    = theme(plot.title    = element_text(face="bold", size=11),
+                     plot.subtitle = element_text(size=8))
+  ) & theme(legend.position="bottom")
+
+fig_alluvial
+```
+
+#### 20. Two way ANOVA: Soil type x Depth for all 28 elements
+
+```{r}
+
+anova_results <- map_dfr(elem_cols, function(el) {
+  df_el <- tot %>% 
+    dplyr::select(soil_type, depth_cm, val=all_of(el)) %>% dplyr::filter(!is.na(val))
+  mod <- aov(val ~ soil_type * factor(depth_cm), data=df_el)
+  sm <- summary(mod)[[1]]
+  tibble(
+    Element = el,
+    F_soil_type = sm$`F value`[1],
+    p_soil_type = sm$`Pr(>F)`[1],
+    F_depth = sm$`F value`[2],
+    p_depth = sm$`Pr(>F)`[2],
+    F_interaction = sm$`F value`[3],
+    p_interaction = sm$`Pr(>F)`[3],
+    sig_soil_type = case_when(sm$`Pr(>F)`[1]<0.001~"***",sm$`Pr(>F)`[1]<0.01~"**",
+                                sm$`Pr(>F)`[1]<0.05~"*",  TRUE~"ns"),
+    sig_depth = case_when(sm$`Pr(>F)`[2]<0.001~"***",sm$`Pr(>F)`[2]<0.01~"**",
+                                sm$`Pr(>F)`[2]<0.05~"*",  TRUE~"ns")
+  )
+}) %>% arrange(p_soil_type)
+ 
+cat("\n=== Two-way ANOVA results for all 28 elements ===\n")
+print(anova_results %>% 
+        dplyr::select(Element, F_soil_type, p_soil_type, sig_soil_type,
+                                F_depth, p_depth, sig_depth), n=28)
+
+cat("Saved: Table_ANOVA_28_elements.csv\n")
+
+
+
+```
+
+#### 21. Supplementary Figure 2: PyC and C4 regression with depth
+
+```{r}
+
+regline_pyc <- lm(depth_mid ~ PyC_g_kg, data=carbon %>% filter(soil_type=="ADE", !is.na(PyC_g_kg)))
+regline_c4  <- lm(depth_mid ~ C4_pct,   data=carbon %>% filter(soil_type=="ADE"))
+ 
+figS2_pyc <- ggplot(carbon %>% filter(!is.na(PyC_g_kg)),
+                    aes(x=PyC_g_kg, y=depth_mid, colour=soil_type, shape=soil_type)) +
+  geom_point(size=3) +
+  geom_smooth(data=carbon %>% filter(soil_type=="ADE", !is.na(PyC_g_kg)),
+              method="lm", se=FALSE, colour="#2166ac") +
+  scale_y_reverse() +
+  scale_colour_manual(values=pal) +
+  scale_shape_manual(values=c("ADE"=18,"Ultisol"=17)) +
+  annotate("text", x=1.7, y=80,
+           label=sprintf("R² = %.2f", summary(regline_pyc)$r.squared),
+           size=3.5, colour="#2166ac") +
+  labs(x="Pyrogenic C (g kg⁻¹)", y="Depth (cm)", title="A – Pyrogenic carbon") +
+  theme_ade + theme(legend.position="none")
+ 
+figS2_c4 <- ggplot(carbon, aes(x=C4_pct, y=depth_mid,
+                                colour=soil_type, shape=soil_type)) +
+  geom_point(size=3) +
+  geom_smooth(data=carbon %>% filter(soil_type=="ADE"),
+              method="lm", se=FALSE, colour="#2166ac") +
+  scale_y_reverse() +
+  scale_colour_manual(values=pal) +
+  scale_shape_manual(values=c("ADE"=18,"Ultisol"=17)) +
+  annotate("text", x=17, y=80,
+           label=sprintf("R² = %.2f", summary(regline_c4)$r.squared),
+           size=3.5, colour="#2166ac") +
+  labs(x="C4-derived OC (%)", y=NULL, title="B – C4 grass contribution") +
+  theme_ade + theme(legend.position="bottom")
+ 
+figS2 <- (figS2_pyc | figS2_c4) +
+  plot_annotation(title="Supplementary Fig. 2 – PyC and C4 regressions with depth",
+                  theme=theme(plot.title=element_text(face="bold")))
+
+figS2
+```
+
+#### 22. Supplementary Figure 4: Sr isotopes vs depth & Nd vs Sr
+
+```{r}
+
+iso_plot_depth <- isotopes %>%
+  filter(!is.na(Sr87_86)) %>%
+  mutate(depth_mid = case_when(
+    grepl("^0",  depth_cm) ~ 5,  grepl("^10", depth_cm) ~ 15,
+    grepl("^20", depth_cm) ~ 25, grepl("^30", depth_cm) ~ 35,
+    grepl("^40", depth_cm) ~ 45, grepl("^50", depth_cm) ~ 55,
+    grepl("^60", depth_cm) ~ 65, grepl("^70", depth_cm) ~ 75,
+    grepl("^80", depth_cm) ~ 85, grepl("^90", depth_cm) ~ 95,
+    TRUE ~ NA_real_))
+ 
+make_iso_depth <- function(st, fill_c) {
+  ggplot(iso_plot_depth %>% filter(soil_type==st),
+         aes(x=Sr87_86, y=depth_mid)) +
+    geom_point(colour=fill_c, size=3) +
+    geom_smooth(method="lm", se=TRUE, colour=fill_c,
+                fill=adjustcolor(fill_c, alpha.f=0.2)) +
+    scale_y_reverse() +
+    labs(x="⁸⁷Sr/⁸⁶Sr", y="Depth (cm)", title=st) + theme_ade
+}
+ 
+make_iso_nd_sr <- function(st, fill_c) {
+  df <- iso_plot_depth %>% filter(soil_type==st, !is.na(Nd143_144))
+  ggplot(df, aes(x=Sr87_86, y=Nd143_144)) +
+    geom_point(colour=fill_c, size=3) +
+    geom_smooth(method="lm", se=TRUE, colour=fill_c,
+                fill=adjustcolor(fill_c, alpha.f=0.2)) +
+    labs(x="⁸⁷Sr/⁸⁶Sr", y="¹⁴³Nd/¹⁴⁴Nd", title=st) + theme_ade
+}
+ 
+figS4 <- (make_iso_depth("ADE","#2166ac") | make_iso_depth("Ultisol","#d6604d") |
+          make_iso_nd_sr("ADE","#2166ac")  | make_iso_nd_sr("Ultisol","#d6604d")) +
+  plot_annotation(
+    title="Supplementary Fig. 4 – Sr isotopes vs depth and Nd vs Sr",
+    theme=theme(plot.title=element_text(face="bold")))
+
+figS4
+```
+
+#### 23. Descriptive Summary Tables
+
+```{r}
+
+stats_isotopes <- stocks %>%
+  group_by(soil_type) %>%
+  summarise(Mean_Ca=mean(avg_Ca_mg_kg,na.rm=TRUE), SD_Ca=sd(avg_Ca_mg_kg,na.rm=TRUE),
+            Mean_P =mean(avg_P_mg_kg, na.rm=TRUE), SD_P =sd(avg_P_mg_kg, na.rm=TRUE),
+            n=n(), .groups="drop")
+write_csv(stats_isotopes, "Table_descriptive_P_Ca.csv")
+ 
+stats_total <- tot %>%
+  group_by(soil_type) %>%
+  summarise(across(all_of(elem_cols),
+                   list(mean=~mean(.x,na.rm=TRUE), sd=~sd(.x,na.rm=TRUE))),
+            .groups="drop")
+
+cat("Saved: Table_descriptive_P_Ca.csv and Table_descriptive_28_elements.csv\n")
+
+stats_isotopes
+
+stats_total
+```
+
+### Conclusions
+
+This article examines one of the most important debates in Amazonian Archaeological research, the Terra Preta, with a examination of one site with intensive geochemical analysis and radiocarbon dating. The purpose of Silva,et. al. (2021) was to present an alternative explanation to the origin of Terra Preta as product of alluvial deposition instead of a product of indigenous inventiveness millenia before the European conquest.
+
+The manage of data presents interesting incorporation of analysis to construct an argument in favor of his proposal: a not-anthropogenic explanation to the ADE (Amazonian Dark Earths). The geochemical characterization explains the enrichment of the ADE in P, Ca, Sr, Nd, and other elements that the presence of C compose the stock of Terra Preta. However, his research is limited to one site and the authors are calling to the debate of a sustained research tradition in ADE for the last decades.
+
+Between the conclusions based on the data analysis replication, I would like to precise in following quotes:
+
+1.  Mapping with R (See Figure 2 in 04. Reference Profiles)
+
+    Silva, et. al, presents a map in which the measures the concentrations of P and Ca by the depth. In that matter, our excercise permitted to create maps based on the quantitative results of the file 2 or dataset d2. However, the method failed in accuracy due to the points were related to georreferenced coordinates that were not delimited by polygon such as shown in Silva, et. al. (2021). In that order the chart shows non delimited buffers that are not reflecting the same visualization than the article. A solution to this problem could be the combination of GIS tools + R geolibraries. In this case, I decided not to go deeper in this mapping exercise and concentrate in the quantitative graphs.
+
+2.  Math and graphs in a versatil way
+
+    The article was published in Nature Communications. This journal has a high audience and a high rate of citations. However, their articles are brief and concrete due to their publication norms. In that order, the use of data visualization could help articles to get published or rejected. In this case the use of linear scatterplots with error rates and statistical references strengthen the publication. In the case of this replication, R permitted me to reproduce all the charts. The visualization is optimal and present high quality to publications. However, there is a great efffort in the connection of datasets (three in this article) and its analysis in statistical charts and graphic visualizations. It is noticeable that the incorporation of statistical predictions such ANOVA permitted him to estimate hypotheses to argue an alternative origin of ADE. In the precise case of fishing consumption, his calculation according to estimated rates of P in fresh and dry fish, its quantity and the time needed to generate ADE as a cultural processes is mathematically correct, but limited to their data. Possibily, Silva et. al (2021) data could have a different error margin and SE if compared with other datasets using the same tools (t-statistics, ANOVA, etc. )
+
+3.  Tidy data
+
+    One of the problems I found was the representation of datasets in a numeric way. In the Supplementary data, Silva, et. al. (2021) present a table with correlations between 28 chemical elements. However, the table's font size is too small to have a good visualization. Possibility, the table shows a necessary piece of data but it is visually non-efficient. When I deployed the data in R it was unmanageable (see Supplementary Table 1: Correlation Heatmap in chunk 18). My current knowledge in coding did not allow me to reproduce this table, however, the data was considered to reproduce the other graphic products and some statistical exercises. The dataset 3 presented a conflict between two columns and it demanded to edit it to solve a possible table plot. In that case, the attempts to tidy the data were not fruitful, but it is a great excercise to comprehend the importance of building understandable, comprehensible and tidy data sets for our analysis.
+
+4.  Data Analysis in R
+
+    R is a powerful analytical tool, it permits to manage great datasets and explore them in a dynamic way. I found that the construction of ordered lines is the secret to accurate analysis. The exploration of packages and their respective tools demand of a constant update. In that case, my interest is to keep practicing and exploring data analysis replication to understand the data management as a crucial component of scientific work. My focus, is to review how the current scholarship is working their data and presentation to replicate analysis and discuss my own research in the most appropriate way. Finally, ADE is my research interest and most of its scholarship is based in quantitative analysis, I found R and statistical analysis in R, gitHub and other resources the start of a shift in my own academic pathway and a great incorporation to Anthropological, Geographical and Archaeological research.
